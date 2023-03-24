@@ -3683,6 +3683,14 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 				if (message->body.buf[message->body.length - 1] == '\0') {
 					recog_channel_set_result_headers(schannel, recog_hdr);
 					recog_channel_set_results(schannel, message->body.buf);
+					// 收到MRCP解析结果
+					switch_event_t *event = NULL;
+					if (switch_event_create(&event, SWITCH_EVENT_CUSTOM) == SWITCH_STATUS_SUCCESS) {
+						switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "Event-Subclass", "unimrcp::asr_result");
+						switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "MRCP-Body", message->body.buf);
+						// 通知到客户端
+						switch_event_fire(&event);
+					}
 				} else {
 					/* string is not null terminated */
 					char *result = (char *) switch_core_alloc(schannel->memory_pool, message->body.length + 1);
@@ -3704,15 +3712,42 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 		} else if (message->start_line.method_id == RECOGNIZER_START_OF_INPUT) {
 			switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_DEBUG, "(%s) START OF INPUT\n", schannel->name);
 			recog_channel_set_start_of_input(schannel);
-		} else {
+			
+		} else if (message->start_line.method_id == RECOGNIZER_INTERPRETATION_COMPLETE) {
+			// Allen@xnjx.net 2023-03-23
+			if (NULL == message->body.buf) {
+				switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_NOTICE, "(%s) RECOGNIZER_INTERPRETATION_COMPLETE AISwitch No result\n", schannel->name);
+				return TRUE;
+			}
+			// 收到 MRCP 解析结果
+			switch_event_t *event = NULL;
+			if (switch_event_create(&event, SWITCH_EVENT_CUSTOM) == SWITCH_STATUS_SUCCESS) {
+				switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "Event-Subclass", "unimrcp::asr_result");
+				switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "MRCP-Body", message->body.buf);
+
+				switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_NOTICE, "=== RECOGNIZER_INTERPRETATION_COMPLETE AISwitch Switch Channel UUID = %s\n", schannel->session_uuid);
+
+				switch_core_session_t *uuid_session = switch_core_session_locate(schannel->session_uuid);
+				if (NULL != uuid_session) {				
+					switch_channel_t *uuid_channel = switch_core_session_get_channel(uuid_session);
+					if (NULL != uuid_channel) {
+						switch_channel_event_set_data(uuid_channel, event);
+					}
+				}				
+				// 通知到客户端
+				switch_event_fire(&event);
+			}
+		}
+		else {
 			switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_DEBUG, "(%s) unexpected event, method_id = %d\n", schannel->name,
 							  (int) message->start_line.method_id);
 			speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 		}
 	} else {
-		switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_DEBUG, "(%s) unexpected message type, message_type = %d\n", schannel->name,
+		// Allen@xnjx.net 2023-03-20
+		switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_DEBUG, "(%s) unexpected message type, message_type = %d, ignore\n", schannel->name,
 						  message->start_line.message_type);
-		speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
+		// speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 	}
 
 	return TRUE;
@@ -4164,6 +4199,7 @@ static mrcp_client_t *mod_unimrcp_client_create(switch_memory_pool_t *mod_pool)
 	}
 	if (!zstr(globals.unimrcp_offer_new_connection)) {
 		offer_new_connection = strcasecmp("true", globals.unimrcp_offer_new_connection);
+		// offer_new_connection = !strcasecmp("1",    globals.unimrcp_offer_new_connection);
 	}
 	connection_agent = mrcp_client_connection_agent_create("MRCPv2ConnectionAgent", max_connection_count, offer_new_connection, pool);
 	if (!connection_agent) {

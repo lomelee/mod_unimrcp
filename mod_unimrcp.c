@@ -538,6 +538,8 @@ static switch_status_t recog_channel_set_params(speech_channel_t *schannel, mrcp
 static switch_status_t recog_channel_set_header(speech_channel_t *schannel, int id, char *val, mrcp_message_t *msg, mrcp_recog_header_t *recog_hdr);
 static switch_status_t recog_channel_set_timers_started(speech_channel_t *schannel);
 
+// 自定义静态函数
+static void eventFireRecogResult(speech_channel_t* schannel, const char* result);
 
 /**
  * Create a mod_unimrcp profile
@@ -2632,11 +2634,40 @@ static switch_status_t recog_channel_set_results(speech_channel_t *schannel, con
 	}
 	switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_DEBUG, "(%s) result:\n\n%s\n", schannel->name, result);
 	r->result = switch_core_strdup(schannel->memory_pool, result);
+	eventFireRecogResult(schannel, result);
 
   done:
 
 	switch_mutex_unlock(schannel->mutex);
 	return status;
+}
+
+/**
+ * @brief 抛出识别结果事件通知
+ * 
+ * @param schannel 通道信息
+ * @param result 识别结果
+ */
+static void eventFireRecogResult(speech_channel_t* schannel, const char* result) {
+	if (NULL == result || NULL == schannel) {
+		return;
+	}
+	// Allen@xnjx.net 2023-03-23 收到MRCP解析结果
+	switch_event_t *event = NULL;
+	if (switch_event_create(&event, SWITCH_EVENT_CUSTOM) == SWITCH_STATUS_SUCCESS) {
+		switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "Event-Subclass", "unimrcp::asr_result");
+		switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "MRCP-Body", result);
+		// 设置事件通道相关数据
+		switch_core_session_t *uuid_session = switch_core_session_locate(schannel->session_uuid);
+		if (NULL != uuid_session) {
+			switch_channel_t *uuid_channel = switch_core_session_get_channel(uuid_session);
+			if (NULL != uuid_channel) {
+				switch_channel_event_set_data(uuid_channel, event);
+			}
+		}
+		// 通知到客户端
+		switch_event_fire(&event);
+	}
 }
 
 /**
@@ -3683,22 +3714,6 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 				if (message->body.buf[message->body.length - 1] == '\0') {
 					recog_channel_set_result_headers(schannel, recog_hdr);
 					recog_channel_set_results(schannel, message->body.buf);
-					// Allen@xnjx.net 2023-03-23 收到MRCP解析结果
-					switch_event_t *event = NULL;
-					if (switch_event_create(&event, SWITCH_EVENT_CUSTOM) == SWITCH_STATUS_SUCCESS) {
-						switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "Event-Subclass", "unimrcp::asr_result");
-						switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "MRCP-Body", message->body.buf);
-						// 设置事件通道相关数据
-						switch_core_session_t *uuid_session = switch_core_session_locate(schannel->session_uuid);
-						if (NULL != uuid_session) {
-							switch_channel_t *uuid_channel = switch_core_session_get_channel(uuid_session);
-							if (NULL != uuid_channel) {
-								switch_channel_event_set_data(uuid_channel, event);
-							}
-						}
-						// 通知到客户端
-						switch_event_fire(&event);
-					}
 				} else {
 					/* string is not null terminated */
 					char *result = (char *) switch_core_alloc(schannel->memory_pool, message->body.length + 1);
@@ -3727,24 +3742,8 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 				switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_NOTICE, "(%s) RECOGNIZER_INTERPRETATION_COMPLETE AISwitch No result\n", schannel->name);
 				return TRUE;
 			}
-
 			if (message->body.buf[message->body.length - 1] == '\0') {
-				// 收到 MRCP 解析结果
-				switch_event_t *event = NULL;
-				if (switch_event_create(&event, SWITCH_EVENT_CUSTOM) == SWITCH_STATUS_SUCCESS) {
-					switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "Event-Subclass", "unimrcp::asr_result");
-					switch_event_add_header_string(event, SWITCH_STACK_BOTTOM, "MRCP-Body", message->body.buf);
-					// 设置事件通道相关数据
-					switch_core_session_t *uuid_session = switch_core_session_locate(schannel->session_uuid);
-					if (NULL != uuid_session) {
-						switch_channel_t *uuid_channel = switch_core_session_get_channel(uuid_session);
-						if (NULL != uuid_channel) {
-							switch_channel_event_set_data(uuid_channel, event);
-						}
-					}
-					// 通知到客户端
-					switch_event_fire(&event);
-				}
+				eventFireRecogResult(schannel, message->body.buf);
 			}
 		}
 		else {

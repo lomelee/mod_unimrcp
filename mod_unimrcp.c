@@ -2649,10 +2649,11 @@ static switch_status_t recog_channel_set_results(speech_channel_t *schannel, con
  * @param result 识别结果
  */
 static void eventFireRecogResult(speech_channel_t* schannel, const char* result) {
-	switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_NOTICE, "eventFireRecogResult (%s) result:\n\n%s\n", schannel->name, result);
+	switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_NOTICE, "eventFireRecogResult into");
 	if (NULL == result || NULL == schannel) {
 		return;
 	}
+	switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_NOTICE, "eventFireRecogResult (%s) result:\n\n%s\n", schannel->name, result);
 	// Allen@xnjx.net 2023-03-23 收到MRCP解析结果
 	switch_event_t *event = NULL;
 	if (switch_event_create(&event, SWITCH_EVENT_CUSTOM) == SWITCH_STATUS_SUCCESS) {

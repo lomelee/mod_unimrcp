@@ -3744,9 +3744,8 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 				switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_NOTICE, "(%s) RECOGNIZER_INTERPRETATION_COMPLETE AISwitch No result\n", schannel->name);
 				return TRUE;
 			}
-			if (message->body.buf[message->body.length - 1] == '\0') {
-				eventFireRecogResult(schannel, message->body.buf);
-			}
+			// 通知解析事件
+			eventFireRecogResult(schannel, message->body.buf);
 		}
 		else {
 			switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_DEBUG, "(%s) unexpected event, method_id = %d\n", schannel->name,

@@ -2666,6 +2666,8 @@ static void eventFireRecogResult(speech_channel_t* schannel, const char* result)
 			if (NULL != uuid_channel) {
 				switch_channel_event_set_data(uuid_channel, event);
 			}
+			// 释放 switch_core_session_locate 在中，对session的加锁
+			switch_core_session_rwunlock(uuid_session);
 		}
 		// 通知到客户端
 		switch_event_fire(&event);
@@ -3754,9 +3756,9 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 		}
 	} else {
 		// Allen@xnjx.net 2023-03-20
-		switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_DEBUG, "(%s) unexpected message type, message_type = %d, ignore\n", schannel->name,
+		switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_NOTICE, "(%s) unexpected message type, message_type = %d, ignore\n", schannel->name,
 						  message->start_line.message_type);
-		// speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
+		speech_channel_set_state(schannel, SPEECH_CHANNEL_ERROR);
 	}
 
 	return TRUE;

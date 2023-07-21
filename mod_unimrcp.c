@@ -3748,7 +3748,6 @@ static apt_bool_t recog_on_message_receive(mrcp_application_t *application, mrcp
 			}
 			// 通知解析事件
 			eventFireRecogResult(schannel, message->body.buf);
-			speech_channel_set_state(schannel, SPEECH_CHANNEL_READY);
 		}
 		else {
 			switch_log_printf(SWITCH_CHANNEL_UUID_LOG(schannel->session_uuid), SWITCH_LOG_DEBUG, "(%s) unexpected event, method_id = %d\n", schannel->name,
